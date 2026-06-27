@@ -72,4 +72,4 @@ sudo ./maws --help
 
 ## ⚖️ License
 
-GPLv3 - Open Source.
+AGPLv3 - Open Source.
