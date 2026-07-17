@@ -41,18 +41,25 @@ struct Args {
 macro_rules! read_sysfs {
     ($dev:expr, $file:expr) => {{
         let dev_str = $dev.to_string();
-        let parent = dev_str.trim_end_matches(|c: char| c.is_ascii_digit());
 
-        let path = if parent != dev_str {
-            // It's a partition. `queue/` attrs live on the parent drive;
-            // per-partition attrs (e.g. `size`) live under the partition dir.
+        // Whole disks and NVMe namespaces have their own dir under /sys/block;
+        // partitions do not (they live under the parent disk's dir).
+        let path = if std::path::Path::new(&format!("/sys/block/{}", dev_str)).exists() {
+            // Whole disk: sdX, vdX, nvmeXnY, etc.
+            format!("/sys/block/{}/{}", dev_str, $file)
+        } else {
+            // Partition. NVMe: nvme0n1p1 -> nvme0n1. SATA: sda1 -> sda.
+            let parent = match dev_str.rfind('p') {
+                Some(i) if dev_str.starts_with("nvme") => &dev_str[..i],
+                _ => dev_str.trim_end_matches(|c: char| c.is_ascii_digit()),
+            };
+            // `queue/` attrs live on the parent drive; per-partition attrs
+            // (e.g. `size`) live under the partition dir.
             if $file.starts_with("queue/") {
                 format!("/sys/block/{}/{}", parent, $file)
             } else {
                 format!("/sys/block/{}/{}/{}", parent, dev_str, $file)
             }
-        } else {
-            format!("/sys/block/{}/{}", dev_str, $file)
         };
 
         let content = std::fs::read_to_string(&path)
@@ -63,7 +70,6 @@ macro_rules! read_sysfs {
             .unwrap_or_else(|_| panic!("Failed to parse sysfs value at: {}", path))
     }};
 }
-
 // ─── Drive ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
